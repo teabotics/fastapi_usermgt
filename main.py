@@ -406,8 +406,10 @@ async def login_for_access_token(response: Response,
                                update_last_session_time=True
                                )
 
-    response.set_cookie(key="access_token", value=access_token)
-    response.set_cookie(key="idp", value=schemas.Idp.LOCAL)
+    response.set_cookie(key="access_token", value=access_token,
+                        path="/", domain="usermgt-front.herokuapp.com", samesite="None")
+    response.set_cookie(key="idp", value=schemas.Idp.LOCAL,
+                        path="/", domain="usermgt-front.herokuapp.com", samesite="None")
 
     return {"access_token": access_token,
             "token_type": "bearer",
