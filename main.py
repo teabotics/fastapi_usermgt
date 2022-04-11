@@ -170,7 +170,7 @@ async def sendemail(request: Request, acct_dict: dict):
         to_emails=emailbox,
         subject='Activate your account!!',
         html_content=f'''<strong>Click the following link to activate your account!!</strong><br>
-        <a href="http://localhost:8000/accounts/activate?activatestr={activate_access_token}" target="_blank" >Click me!!</a>'''
+        <a href="https://fastapi-usermgt.herokuapp.com/accounts/activate?activatestr={activate_access_token}" target="_blank" >Click me!!</a>'''
     )
     try:
         sg = SendGridAPIClient(os.getenv('SENDGRID_KEY'))
