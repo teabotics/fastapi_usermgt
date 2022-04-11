@@ -407,9 +407,9 @@ async def login_for_access_token(response: Response,
                                )
 
     response.set_cookie(key="access_token", value=access_token,
-                        path="/", secure=True, samesite="None")
+                        path="/", domain="usermgt-front.herokuapp.com", secure=True, samesite="None")
     response.set_cookie(key="idp", value=schemas.Idp.LOCAL,
-                        path="/", secure=True, samesite="None")
+                        path="/", domain="usermgt-front.herokuapp.com", secure=True, samesite="None")
 
     return {"access_token": access_token,
             "token_type": "bearer",
