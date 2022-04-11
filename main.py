@@ -39,6 +39,9 @@ app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=LOCAL_SECRET_KEY)
 
 origins = [
+    "*",
+    "https://usermgt-front.herokuapp.com",
+    "https://fastapi-usermgt.herokuapp.com",
     "http://localhost:8000",
     "http://localhost:4200",
 ]
