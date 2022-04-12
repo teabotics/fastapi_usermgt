@@ -195,8 +195,20 @@ def authenticate(payload: dict = Depends(get_payload_from_req_header),
     return {'payload': payload, 'acct_dict': acct_autheticated}
 
 
-@app.get("/accounts/acctstat")
+@app.get("/accounts/acctstat", summary="Retrieve user statistics", response_description="User statistics")
 def get_acctstat(auth_result: dict = Depends(authenticate), db: Session = Depends(get_db)):
+    """
+    Retrieve user statistics:
+
+    Required request parameters. (http Authorization request header)
+    - Athorization token
+
+    Response:
+    - **acct_count**: Total number of users who have signed up.
+    - **session_accts_today**: Total number of users with active sessions today.
+    - **avg_session_accts_7_days**: Average number of active session users in the last 7 days rolling.
+
+    """
     db_acct = crud.update_acct(db=db,
                                email=auth_result['payload']['sub'],
                                update_last_session_time=True
@@ -208,10 +220,34 @@ def get_acctstat(auth_result: dict = Depends(authenticate), db: Session = Depend
             }
 
 
-@app.post("/accounts/registersocial", response_model=schemas.AccountBase)
+@app.post("/accounts/registersocial", response_model=schemas.AccountBase,
+          summary="Register an account for google or facebook",
+          response_description="Registered account info")
 async def create_social_acct(request: Request,
                              acct_create: schemas.AccountBase,
                              db: Session = Depends(get_db)):
+    """
+    Register an account for people who login with google or facebook account:
+
+    This API is called by web front everytime a user logged in with social account. The program will check
+    if the social account has been registered in the system. If not, the program will register the user. If the
+    social account has been registered before, it will not be registered again.
+
+    The email have to be unique, therefore, if the email of the social account has existed in the system, the
+    registration of the social account will fail.
+
+    Required request parameters. (http Authorization request header)
+    - Athorization token provided by Auth0
+
+    Required request parameters. (http request body)
+    - **email**: email of the social account
+    - **username**: user name of the social account
+    - **social_id**: The 'sub' value of user info provided by Auth0
+
+    Response:
+    - account info of registered social account
+
+    """
     payload = get_payload_from_req_header(request)
     db_acct = crud.get_acct_by_email(db, email=acct_create.email)
     if db_acct:
@@ -259,19 +295,41 @@ async def create_social_acct(request: Request,
         )
 
 
-@app.post("/accounts/register", response_model=schemas.AccountBase)
+@app.post("/accounts/register", response_model=schemas.AccountBase,
+          summary="Register an local account",
+          response_description="Registered account info"
+          )
 async def create_acct(request: Request,
                       acct_create: schemas.AccountCreate,
                       db: Session = Depends(get_db)):
+    """
+    Register an account in the system:
+
+    An account created in the system directly is defined as a "Local account". Not like facebook or google, all
+    the account info of a local account are hold by our own system, not any 3rd party identity provider.
+
+    This API is called by web front register form.
+
+    After the account is registered, an activation email will be sent to user's email box, user can click the
+    activation link in the email to activate the account. A not-activated local account cannot log into system.
+
+    Required request parameters. (http request body)
+    - **email**: email of the local account to be created
+    - **username**: user name of the local account to be created
+    - **password**: password of the local account to be created
+
+    Response:
+    - account info of registered local account
+    """
     # check if email already taken
     db_acct = crud.get_acct_by_email(db, email=acct_create.email)
     if db_acct:
         raise HTTPException(status_code=400, detail="Email already registered")
 
     # check if username already taken
-    db_acct_by_name = crud.get_acct_by_username(db, username=acct_create.username)
-    if db_acct_by_name:
-        raise HTTPException(status_code=400, detail="Username already registered")
+    # db_acct_by_name = crud.get_acct_by_username(db, username=acct_create.username)
+    # if db_acct_by_name:
+    #     raise HTTPException(status_code=400, detail="Username already registered")
 
     # validate email address
     if not is_valid_email(acct_create.email):
@@ -300,11 +358,20 @@ async def create_acct(request: Request,
     )
 
 
-@app.get("/accounts/activate")
-async def create_acct(request: Request,
-                      response: Response,
-                      activatestr: str,
-                      db: Session = Depends(get_db)):
+@app.get("/accounts/activate", summary="Activate a local account",
+          response_description="Redirect to login page")
+async def activate_acct(activatestr: str, db: Session = Depends(get_db)):
+    """
+    Activate a local account:
+
+    This API is called by clicking the activation link in the email sent by the system
+
+    Required request parameters. (http request body)
+    - **activatestr**: the activate token created by register process
+
+    Response:
+    - redirect to login page
+    """
 
     token_payload = validate_local_access_token(activatestr)
 
@@ -334,12 +401,28 @@ async def create_acct(request: Request,
                             status_code=status.HTTP_302_FOUND)
 
 
-@app.post("/accounts/resendemail", response_model=schemas.AccountCreate)
+@app.post("/accounts/resendemail", response_model=schemas.AccountCreate,
+          summary="Resend activation/verification email",
+          response_description="Account info which ask for resending email"
+          )
 async def resend_verification_email(
         request: Request,
         account_to_resend_email: schemas.AccountCreate,
         db: Session = Depends(get_db)
 ):
+    """
+    Resend a verification email:
+
+    This API is called when user tried to login with a not-activated account, and click the
+    "Resend Verification Email" button.
+
+    Required request parameters. (http request body)
+    - **email**: email of the account
+    - **password**: password of the account
+
+    Response:
+    - Account info which ask for resending email
+    """
     acct_dict = authenticate_acct(db=db, email=account_to_resend_email.email, pwd=account_to_resend_email.password)
 
     if not acct_dict:
@@ -361,10 +444,25 @@ async def resend_verification_email(
     )
 
 
-@app.post("/accounts/profile")
+@app.post("/accounts/profile",
+          summary="Retrieve account info of a single account",
+          response_description="The account info"
+          )
 async def get_profile(request: Request,
                       auth_result: dict = Depends(authenticate),
                       db: Session = Depends(get_db)):
+    """
+    Retrieve info of an account:
+
+    The program will extract data from JWT access token in the request header and retrieve account info accordingly.
+
+    Required request parameters. (http Authorization request header)
+    - Athorization token
+
+    Response:
+    - retrieved account info
+
+    """
 
     db_acct = crud.update_acct(db=db,
                                acct_id=auth_result['acct_dict']['id'],
@@ -376,10 +474,31 @@ async def get_profile(request: Request,
     )
 
 
-@app.post("/accounts/token")
+@app.post("/accounts/token",
+          summary="Login with a local account",
+          response_description="The info of logged in account"
+          )
 async def login_for_access_token(response: Response,
                                  db: Session = Depends(get_db),
                                  form_data: OAuth2PasswordRequestForm = Depends()):
+    """
+   Login with a local account :
+
+   An account created in the system directly is defined as a "Local account". Not like facebook or google, all
+   the account info of a local account are hold by our own system, not any 3rd party identity provider.
+
+   This API is called by web front login form.
+
+   Required request parameters. (http request body)
+   - **email**: email of the local account to login
+   - **password**: password of the local account to login
+
+   Response:
+   - **access_token**: JWT token
+   - **token_type**: type of token
+   - **username**: user name of the logged in account
+   - **email**: email of the logged in account
+   """
     acct_dict = authenticate_acct(db, form_data.username, form_data.password)
     if not acct_dict:
         raise HTTPException(
@@ -406,11 +525,6 @@ async def login_for_access_token(response: Response,
                                update_last_session_time=True
                                )
 
-    # response.set_cookie(key="access_token", value=access_token,
-    #                     path="/", domain="usermgt-front.herokuapp.com", secure=True, samesite="None")
-    # response.set_cookie(key="idp", value=schemas.Idp.LOCAL,
-    #                     path="/", domain="usermgt-front.herokuapp.com", secure=True, samesite="None")
-
     return {"access_token": access_token,
             "token_type": "bearer",
             "username": acct_dict['username'],
@@ -418,11 +532,25 @@ async def login_for_access_token(response: Response,
             }
 
 
-@app.get("/accounts/")
+@app.get("/accounts/",
+         summary="Retrieve all account info",
+         response_description="The info of all accounts in the system")
 def read_users(skip: int = 0,
                limit: int = 100,
                auth_result: dict = Depends(authenticate),
                db: Session = Depends(get_db)):
+    """
+    Retrieve info of all accounts in the system:
+
+    This API is called by dashboard page of web front.
+
+    Required request parameters. (http Authorization request header)
+    - Athorization token
+
+    Response:
+    - a list of retrieved account info
+
+    """
 
     db_acct = crud.update_acct(db=db,
                                email=auth_result['payload']['sub'],
@@ -437,10 +565,30 @@ def read_users(skip: int = 0,
     return acct_dicts
 
 
-@app.put("/accounts/update")
+@app.put("/accounts/update",
+         summary="Update local account user name and/or password",
+         response_description="The info of updated local account"
+         )
 def update_username_password(account_to_update: schemas.AccountUpdate,
                              auth_result: dict = Depends(authenticate),
                              db: Session = Depends(get_db)):
+    """
+    Update local account user name and/or password:
+
+    This API is called by "Edit username and password" function of web front.
+
+    Required request parameters. (http Authorization request header)
+    - Athorization token
+
+    Required request parameters. (http request body)
+   - **username**: new user name of the local account to update
+   - **password**: new password of the local account to update
+   - **old_password**: old password of the local account to update
+
+    Response:
+    - updated account info
+
+    """
 
     acct_dict = None
     db_acct = None
@@ -470,31 +618,6 @@ def update_username_password(account_to_update: schemas.AccountUpdate,
         status_code=status.HTTP_200_OK,
         content=jsonable_encoder(schemas.Account(**db_acct.to_dict()))
     )
-
-
-# For test update_user function only
-# @app.get("/update_acct", response_model=schemas.Account)
-# def update_acct(acct_id: int = None,
-#                 email: str = None,
-#                 update_login_count: bool = False,
-#                 update_last_session_time: bool = False,
-#                 update_last_login_time: bool = False,
-#                 password: str | None = None,
-#                 username: str | None = None,
-#                 db: Session = Depends(get_db),
-#                 ):
-#     db_acct = crud.update_acct(db=db,
-#                                email=email,
-#                                acct_id=acct_id,
-#                                update_login_count=update_login_count,
-#                                update_last_session_time=update_last_session_time,
-#                                update_last_login_time=update_last_login_time,
-#                                password=password,
-#                                username=username)
-#     if db_acct is None:
-#         raise HTTPException(status_code=404, detail="User not found")
-#     return db_acct
-
 
 @app.get('/favicon.ico', include_in_schema=False)
 async def favicon():
